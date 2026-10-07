@@ -61,6 +61,16 @@ public class TurbineController {
         return ApiResponse.ok(turbineService.list());
     }
 
+    /**
+     * 将风电叶片运维对象置为无效（只置无效不删除）。
+     * 置无效后再查"叶片结冰风险预警"，页面、导出与后台按同一口径排除该风机。
+     */
+    @PostMapping("/{id}/deactivate")
+    public ApiResponse<Turbine> deactivate(@PathVariable Long id,
+                                           @RequestParam(required = false, defaultValue = "系统管理员") String operator) {
+        return ApiResponse.ok(turbineService.deactivate(id, operator));
+    }
+
     /** 补录叶片 */
     @PostMapping("/{id}/blades")
     public ApiResponse<Blade> addBlade(@PathVariable Long id,

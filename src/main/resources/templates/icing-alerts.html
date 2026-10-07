@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"/>
+    <title>叶片结冰风险预警</title>
+    <style>
+        body { font-family: "Microsoft YaHei", Arial, sans-serif; margin: 24px; color: #1f2933; }
+        h2 { margin-bottom: 4px; }
+        .sub { color: #6b7280; font-size: 13px; margin-bottom: 16px; }
+        .bar { margin-bottom: 12px; }
+        .bar select, .bar input { padding: 4px 6px; margin-right: 8px; }
+        .btn { display: inline-block; padding: 5px 12px; background: #2563eb; color: #fff;
+               text-decoration: none; border-radius: 4px; border: none; cursor: pointer; font-size: 13px; }
+        .btn.export { background: #059669; }
+        table { border-collapse: collapse; width: 100%; font-size: 13px; }
+        th, td { border: 1px solid #d7dde5; padding: 6px 8px; text-align: left; vertical-align: top; }
+        th { background: #f1f5f9; }
+        .CRITICAL { color: #b91c1c; font-weight: bold; }
+        .WARNING { color: #b45309; font-weight: bold; }
+        .NORMAL { color: #166534; }
+        .ACTIVE { color: #b45309; font-weight: bold; }
+        .SHUTDOWN_CONFIRMED { color: #b91c1c; font-weight: bold; }
+        .CLEARED { color: #166534; }
+        .empty { color: #6b7280; padding: 16px 0; }
+    </style>
+</head>
+<body>
+<h2>叶片结冰风险预警</h2>
+<div class="sub">
+    按温度、湿度、风速与历史振动评估；达到阈值生成停机建议并通知值班人员，人工确认后停机，解除风险须再次确认。
+    本页面与导出、后台接口同口径——已置为无效的风机不展示。
+</div>
+
+<form class="bar" method="get" th:action="@{/icing-alerts}">
+    <label>风机ID
+        <input type="number" name="turbineId" th:value="${qTurbineId}" style="width:90px"/>
+    </label>
+    <label>状态
+        <select name="status">
+            <option value="">全部</option>
+            <option th:each="s : ${statuses}" th:value="${s}" th:text="${s}"
+                    th:selected="${s == qStatus}"></option>
+        </select>
+    </label>
+    <label>风险等级
+        <select name="riskLevel">
+            <option value="">全部</option>
+            <option th:each="l : ${levels}" th:value="${l}" th:text="${l}"
+                    th:selected="${l == qRiskLevel}"></option>
+        </select>
+    </label>
+    <button class="btn" type="submit">查询</button>
+    <a class="btn export"
+       th:href="@{/icing-alerts/export(turbineId=${qTurbineId},status=${qStatus},riskLevel=${qRiskLevel})}">导出CSV</a>
+</form>
+
+<table>
+    <thead>
+    <tr>
+        <th>告警编号</th>
+        <th>风机编号</th>
+        <th>场址</th>
+        <th>监测时刻</th>
+        <th>温度℃</th>
+        <th>湿度%</th>
+        <th>风速m/s</th>
+        <th>振动g</th>
+        <th>风险得分</th>
+        <th>风险等级</th>
+        <th>停机建议</th>
+        <th>状态</th>
+        <th>停机确认</th>
+        <th>解除确认</th>
+        <th>模型版本</th>
+    </tr>
+    </thead>
+    <tbody>
+    <tr th:each="r : ${rows}">
+        <td th:text="${r.alertNo}"></td>
+        <td th:text="${r.turbineNo}"></td>
+        <td th:text="${r.site}"></td>
+        <td th:text="${r.monitorTime != null} ? ${#temporals.format(r.monitorTime,'yyyy-MM-dd HH:mm:ss')} : ''"></td>
+        <td th:text="${r.temperature}"></td>
+        <td th:text="${r.humidityPct}"></td>
+        <td th:text="${r.windSpeed}"></td>
+        <td th:text="${r.vibration}"></td>
+        <td th:text="${r.score}"></td>
+        <td><span th:class="${r.riskLevel}" th:text="${r.riskLevel}"></span></td>
+        <td th:text="${r.shutdownAdvice}"></td>
+        <td><span th:class="${r.status}" th:text="${r.status}"></span></td>
+        <td>
+            <span th:if="${r.shutdownConfirmedBy != null}"
+                  th:text="${r.shutdownConfirmedBy} + ' @ ' + ${#temporals.format(r.shutdownConfirmedAt,'MM-dd HH:mm')}"></span>
+        </td>
+        <td>
+            <span th:if="${r.clearConfirmedBy != null}"
+                  th:text="${r.clearConfirmedBy} + ' @ ' + ${#temporals.format(r.clearConfirmedAt,'MM-dd HH:mm')}"></span>
+        </td>
+        <td th:text="'v' + ${r.modelVersionNo}"></td>
+    </tr>
+    <tr th:if="${#lists.isEmpty(rows)}">
+        <td colspan="15" class="empty">无符合条件的结冰风险预警（已置为无效的风机不在口径内）。</td>
+    </tr>
+    </tbody>
+</table>
+</body>
+</html>

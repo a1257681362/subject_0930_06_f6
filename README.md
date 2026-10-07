@@ -248,3 +248,47 @@ POST   /api/part-rules/{partType}/versions      规则调整（只生成新版�
 ### 验证
 
 - `SparePartInventoryTest`：序列批次入库与重复序列号拦截、领用绑定风机与缺陷单、非在库拒绝再次出库、换件同事务更新库存/维修进度/资产档案并记录旧件去向与新件状态、缺旧件去向被拦截且三方状态均不变、已安装不能再次出库也不能退库、退库验收通过与驳回、规则调整只生成新版本且旧版本内容与旧结论不改动、序列追踪全生命周期可查。
+
+## F6 叶片结冰风险预警
+
+在 F1-F5 基础上新增叶片结冰风险预警（schema 版本 `f6-1`）：按温度、湿度、风速与历史振动计算风险等级；达到阈值生成停机建议并通知值班人员；人工确认后才执行停机，解除风险需再次确认；模型参数版本化，历史告警不随新参数重算；异常/缺失数据标记待补；风电叶片运维对象置为无效后，预警的页面、导出与后台查询同口径排除。
+
+### 数据表
+
+| 表 | 说明 |
+| --- | --- |
+| `t_icing_model_version` | 结冰风险模型参数：四因子阈值/满分/带宽、告警与危急阈值、停机建议模板；版本号递增，`PUBLISHED/RETIRED`；预置 v1 |
+| `t_icing_monitor_data` | 监测数据：温度/湿度/风速/历史振动；`风机+监测时刻` 幂等，补传/补录/重试归并并递增 `revision`；缺失/异常为 `DATA_MISSING` 待补 |
+| `t_icing_alert` | 结冰风险告警：固化读数、得分、等级与模型版本（冗余 version_no）；状态 `ACTIVE/SHUTDOWN_CONFIRMED/CLEARED`；记录两次确认人/时刻 |
+| `t_icing_alert_confirmation` | 人工确认记录：停机确认、解除确认（含驳回）逐条留痕 |
+| `t_icing_notification` | 值班通知回执：达到阈值通知值班人员，与告警同事务 |
+| `t_turbine` | 新增 `run_status`（`ACTIVE/INVALID`）：运维对象有效标志，只置无效不删除 |
+
+### 业务规则
+
+- **四因子评分**（`IcingRiskEvaluator`）：温度低于阈值起算、湿度高于阈值起算（满分带宽内线性折算）；风速低于下限（静稳）或高于上限（携冻雨强风）取风速满分；历史振动相对基线的偏离比例折算；总分 0~100，按模型的告警阈值/危急阈值判 `WARNING/CRITICAL`。
+- **阈值告警与通知**：达到阈值生成告警并固化停机建议，同事务通知值班人员（留回执）；一轮结冰过程（存在未闭环告警）只告一次，持续超阈值的重复上报不重复告警、不重复通知；闭环后再次进入结冰条件才产生新一轮告警。
+- **两次人工确认**：系统只发建议——第一次人工确认后才置 `SHUTDOWN_CONFIRMED`（执行停机）；解除风险须第二次人工确认，确认通过才 `CLEARED` 闭环，解除可驳回（维持停机待查、填驳回原因、留痕）后再次确认。
+- **模型参数版本化**：调整只生成新版本并发布，旧版本退役但内容不改；告警固化产生时的读数、得分、等级与 `model_version_id/version_no`，**历史告警不随新参数重算**；新上报数据按当前发布版本评分。
+- **异常/缺失待补**：任一读数为 null 或超出物理量程，数据标记 `DATA_MISSING`、记录缺失字段、不评分不告警；补传按 `风机+时刻` 幂等归并，数据完整后重算（递增 `revision`），待补列表可查。
+- **无效对象同口径**：`POST /api/turbines/{id}/deactivate` 将风机置为 `INVALID`（同时闭合服役窗口，档案不删除）。预警列表统一由 `IcingAlertService.listAlerts` 联表 `t_turbine`（`run_status='ACTIVE'`）产出，**页面 `/icing-alerts`、导出 `/icing-alerts/export`、后台 `/api/icing/alerts` 三处共用同一查询**；无效对象不再接受监测上报；历史告警档案仍可按编号追溯。
+
+### 接口一览
+
+```
+POST   /api/icing/monitor-data                 上报监测数据并评估（缺失/异常返回 pendingSupplement）
+GET    /api/icing/monitor-data?pending=true    监测数据（只看待补）
+GET    /api/icing/alerts                       结冰风险预警列表（后台口径；?turbineId=&status=&riskLevel=&onlyOpen=）
+GET    /api/icing/alerts/{id}                  告警详情（固化读数/模型版本+确认记录+通知回执）
+POST   /api/icing/alerts/{id}/confirm-shutdown 第一次人工确认：确认后执行停机
+POST   /api/icing/alerts/{id}/confirm-clear    第二次人工确认（?pass=true 解除 / false 驳回可再确认）
+GET    /api/icing/model/versions               模型参数全量版本（含已退役）
+POST   /api/icing/model/versions               参数调整（只生成新版本，历史告警不重算）
+POST   /api/turbines/{id}/deactivate           运维对象置为无效（页面/导出/后台同口径排除）
+GET    /icing-alerts                           叶片结冰风险预警页面
+GET    /icing-alerts/export                    导出 CSV（与页面、后台同口径）
+```
+
+### 验证
+
+- `IcingRiskWarningTest`：四因子评分与危急阈值、停机建议与值班通知回执、持续超阈值不重复告警、停机/解除两次人工确认（解除驳回可再确认、越级确认拦截）、模型调整只生成新版本且历史告警固化 v1 不重算（新数据按 v2 评分）、缺失/异常标记待补与补传幂等重算（revision 递增）、风机置无效后页面/导出/后台三口径一致排除且上报被拒、历史告警档案仍可追溯。

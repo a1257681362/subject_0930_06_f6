@@ -2,6 +2,7 @@ package com.evops.entity;
 
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.evops.common.BaseEntity;
+import com.evops.enums.TurbineRunStatus;
 import com.evops.enums.TurbineStatus;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
@@ -10,6 +11,7 @@ import java.time.LocalDateTime;
 
 /**
  * 风机档案。服役窗口为 [gridConnectedAt, decommissionedAt)，左闭右开。
+ * runStatus 为运维对象有效标志：置为 INVALID 只置无效不删除，页面/导出/后台查询同口径排除。
  */
 @Data
 @EqualsAndHashCode(callSuper = true)
@@ -26,4 +28,6 @@ public class Turbine extends BaseEntity {
     /** 退役时间，null 表示在运 */
     private LocalDateTime decommissionedAt;
     private TurbineStatus status;
+    /** 运维对象有效标志：ACTIVE 有效 / INVALID 无效 */
+    private TurbineRunStatus runStatus;
 }
