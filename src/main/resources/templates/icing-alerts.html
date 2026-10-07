@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"/>
+    <title>叶片结冰风险预警</title>
+    <style>
+        body { font-family: "Microsoft YaHei", sans-serif; margin: 24px; color: #222; }
+        h2 { margin-bottom: 4px; }
+        .meta { color: #666; font-size: 13px; margin-bottom: 12px; }
+        .filters { margin-bottom: 12px; }
+        table { border-collapse: collapse; width: 100%; font-size: 13px; }
+        th, td { border: 1px solid #ccc; padding: 6px 8px; text-align: left; }
+        th { background: #f2f4f7; }
+        .HIGH { color: #c0392b; font-weight: bold; }
+        .MEDIUM { color: #d68910; font-weight: bold; }
+        .empty { color: #888; padding: 16px; }
+        a.btn { display: inline-block; margin-left: 8px; padding: 4px 12px; background: #2e6da4;
+                color: #fff; text-decoration: none; border-radius: 3px; }
+    </style>
+</head>
+<body>
+<h2>叶片结冰风险预警</h2>
+<div class="meta">
+    口径：仅统计<b>有效叶片</b>；页面、导出与后台列表同源。达到停机阈值须人工确认停机，解除风险需再次确认。
+    共 <span th:text="${#lists.size(rows)}">0</span> 条。
+</div>
+<div class="filters">
+    <form method="get" action="/icing/alerts/page" style="display:inline;">
+        状态：
+        <select name="status">
+            <option value="" th:selected="${status == null}">全部</option>
+            <option value="ACTIVE" th:selected="${status != null and status.name() == 'ACTIVE'}">待确认</option>
+            <option value="STOP_CONFIRMED" th:selected="${status != null and status.name() == 'STOP_CONFIRMED'}">已停机</option>
+            <option value="RESOLVED" th:selected="${status != null and status.name() == 'RESOLVED'}">已解除</option>
+        </select>
+        <input type="hidden" name="turbineId" th:value="${turbineId}"/>
+        <button type="submit">筛选</button>
+    </form>
+    <a class="btn"
+       th:href="@{/icing/alerts/export(status=${status != null ? status.name() : null}, turbineId=${turbineId})}">导出 CSV</a>
+</div>
+<table>
+    <thead>
+    <tr>
+        <th>预警编号</th>
+        <th>风机编号</th>
+        <th>叶片编号</th>
+        <th>观测时刻</th>
+        <th>风险等级</th>
+        <th>风险分</th>
+        <th>温度分</th>
+        <th>湿度分</th>
+        <th>风速分</th>
+        <th>振动分</th>
+        <th>参数版本</th>
+        <th>状态</th>
+        <th>停机建议</th>
+        <th>停机确认</th>
+        <th>解除确认</th>
+    </tr>
+    </thead>
+    <tbody>
+    <tr th:each="row : ${rows}">
+        <td th:text="${row.alert.alertNo}"></td>
+        <td th:text="${row.turbineNo}"></td>
+        <td th:text="${row.bladeNo}"></td>
+        <td th:text="${row.observedAt != null ? #temporals.format(row.observedAt, 'yyyy-MM-dd HH:mm:ss') : '-'}"></td>
+        <td>
+            <span th:class="${row.alert.riskLevel.name()}"
+                  th:text="${row.alert.riskLevel.name() == 'HIGH' ? '高' : '一般'}"></span>
+        </td>
+        <td th:text="${row.alert.riskScore}"></td>
+        <td th:text="${row.alert.tempScore}"></td>
+        <td th:text="${row.alert.humidityScore}"></td>
+        <td th:text="${row.alert.windScore}"></td>
+        <td th:text="${row.alert.vibrationScore}"></td>
+        <td th:text="'v' + ${row.alert.paramVersionNo}"></td>
+        <td th:text="${row.alert.status.name() == 'ACTIVE' ? '待确认'
+                    : (row.alert.status.name() == 'STOP_CONFIRMED' ? '已停机待解除' : '已解除')}"></td>
+        <td th:text="${row.alert.shutdownAdvice} ?: '-'"></td>
+        <td th:text="${row.alert.shutdownConfirmedBy != null
+                    ? row.alert.shutdownConfirmedBy + ' ' + #temporals.format(row.alert.shutdownConfirmedAt, 'MM-dd HH:mm') : '-'}"></td>
+        <td th:text="${row.alert.resolvedBy != null
+                    ? row.alert.resolvedBy + ' ' + #temporals.format(row.alert.resolvedAt, 'MM-dd HH:mm') : '-'}"></td>
+    </tr>
+    <tr th:if="${#lists.isEmpty(rows)}">
+        <td colspan="15" class="empty">暂无有效叶片的结冰风险预警。</td>
+    </tr>
+    </tbody>
+</table>
+</body>
+</html>

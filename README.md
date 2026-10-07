@@ -248,3 +248,46 @@ POST   /api/part-rules/{partType}/versions      规则调整（只生成新版�
 ### 验证
 
 - `SparePartInventoryTest`：序列批次入库与重复序列号拦截、领用绑定风机与缺陷单、非在库拒绝再次出库、换件同事务更新库存/维修进度/资产档案并记录旧件去向与新件状态、缺旧件去向被拦截且三方状态均不变、已安装不能再次出库也不能退库、退库验收通过与驳回、规则调整只生成新版本且旧版本内容与旧结论不改动、序列追踪全生命周期可查。
+
+## F6 叶片结冰预警
+
+在 F1-F5 基础上新增叶片结冰预警（schema 版本 `f6-1`）：系统按温度、湿度、风速和历史振动计算风险等级；达到阈值生成停机建议并通知值班人员；人工确认后才执行停机，解除风险需再次确认；模型参数版本化，历史告警不随新参数重算；异常/缺失数据标记待补。风电叶片运维对象置为无效后，页面、导出与后台对“叶片结冰风险预警”同口径（只统计有效叶片）。
+
+### 数据表
+
+| 表 | 说明 |
+| --- | --- |
+| `t_blade` | 新增 `valid`/`invalidated_at`/`invalid_reason`：无效叶片（报废/拆除停用）不再参与预警 |
+| `t_icing_model_param` | 模型参数版本：四因子权重、各因子起算/饱和区间、振动回看窗口、预警/停机阈值；预置首版本 |
+| `t_icing_observation` | 观测数据：温度/湿度/风速/历史振动；状态 `OK/PENDING_SUPPLEMENT`，固化首次上报参数版本，补传递增 `revision` |
+| `t_icing_alert` | 风险预警：风险分与四分项快照、停机建议、所用参数版本；状态 `ACTIVE/STOP_CONFIRMED/RESOLVED`；一次观测至多一条 |
+| `t_icing_notification` | 通知回执：一般预警/停机建议通知值班人员，回执编号唯一 |
+
+### 业务规则
+
+- **风险分级**（`IcingRiskCalculator`）：温度、湿度、风速、历史振动各按 0~100 线性给分，按参数权重加权得风险分。`风险分 ≥ stop_threshold` 为高风险（HIGH，生成停机建议），`≥ warn_threshold` 为一般预警（MEDIUM），其余低风险不告警。
+- **停机两次确认**：达到停机阈值系统**只生成建议并通知值班人员，不自动停机**；值班人员人工确认后才置 `STOP_CONFIRMED`（执行停机）；除冰后须**再次确认**才 `RESOLVED` 闭环。一般预警未停机，可直接确认解除。越级（未停机先解除）、重复确认均拦截。
+- **参数版本化**：参数调整只生成新版本并发布，旧版本退役但内容不改；告警时快照风险分、分项与所用参数版本，**历史告警不随新参数重算**。
+- **异常缺失待补**：温度/湿度/风速缺失或越出物理区间、历史振动缺失时标记 `PENDING_SUPPLEMENT`，**不参与风险计算、不生成告警**；补传后按该观测**首次上报时的同一参数版本**重算，观测编号与观测时刻保留、`revision` 递增；一次补不全继续待补。
+- **无效同口径**：叶片置无效（`POST /api/blades/{id}/invalidate`）后不再接受观测，其历史告警从“叶片结冰风险预警”中剔除。页面（`/icing/alerts/page`）、导出（`/icing/alerts/export`）与后台列表（`GET /api/icing/alerts`）**共用 `IcingAlertService.listWarningRows`** 组装，只统计 `valid=TRUE` 叶片；历史告警不删除，可按详情追溯。
+
+### 接口一览
+
+```
+POST   /api/icing/observations                 上报观测（缺失/异常自动标记待补）
+POST   /api/icing/observations/{id}/supplement 待补补传（按首次上报参数版本重算）
+GET    /api/icing/observations                 观测列表（?bladeId=&status=）
+GET    /api/icing/alerts                       预警列表（后台；?status=&turbineId=，仅有效叶片）
+GET    /api/icing/alerts/{id}                  预警详情（观测 + 通知回执）
+POST   /api/icing/alerts/{id}/confirm-shutdown 人工确认停机建议（确认后才停机）
+POST   /api/icing/alerts/{id}/resolve          再次确认解除风险
+GET    /api/icing/model-params                 参数全量版本（含已退役）
+POST   /api/icing/model-params/versions        参数调整（只生成新版本，历史告警不重算）
+POST   /api/blades/{id}/invalidate            叶片置无效（页面/导出/后台同口径不再统计）
+GET    /icing/alerts/page                      预警页面（Thymeleaf）
+GET    /icing/alerts/export                    预警导出（CSV）
+```
+
+### 验证
+
+- `IcingAlertFlowTest`：低/中/高三级计算与值班通知、停机建议生成、两次人工确认（不可越级/重复）、一般预警直接解除、缺失与异常数据待补、补传按原参数版本重算、参数版本化历史告警不重算、叶片置无效后页面/导出/后台三处同口径剔除且历史告警仍在库。

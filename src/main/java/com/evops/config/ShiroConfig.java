@@ -39,6 +39,10 @@ public class ShiroConfig {
         chain.addPathDefinition("/api/equipment/**", "anon");
         chain.addPathDefinition("/api/spare-parts/**", "anon");
         chain.addPathDefinition("/api/part-rules/**", "anon");
+        chain.addPathDefinition("/api/blades/**", "anon");
+        chain.addPathDefinition("/api/icing/**", "anon");
+        // 结冰预警页面与导出：联调期放行
+        chain.addPathDefinition("/icing/**", "anon");
         chain.addPathDefinition("/**", "authc");
         return chain;
     }

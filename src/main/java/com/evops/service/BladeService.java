@@ -139,4 +139,22 @@ public class BladeService extends ServiceImpl<BladeMapper, Blade> {
         }
         return blade;
     }
+
+    /**
+     * 将叶片置为无效（报废/拆除停用）。无效后不再参与叶片结冰风险预警，
+     * 页面、导出与后台共用同一过滤口径（valid = TRUE）。
+     */
+    @Transactional
+    public Blade invalidate(Long id, String reason, String operator) {
+        Blade blade = mustGet(id);
+        if (!Boolean.TRUE.equals(blade.getValid())) {
+            throw new IllegalArgumentException("叶片已为无效状态: " + blade.getBladeNo());
+        }
+        blade.setValid(false);
+        blade.setInvalidatedAt(java.time.LocalDateTime.now());
+        blade.setInvalidReason(reason);
+        blade.setStatus(BladeStatus.SCRAPPED);
+        updateById(blade);
+        return blade;
+    }
 }
